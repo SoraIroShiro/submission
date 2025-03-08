@@ -6,7 +6,7 @@ import seaborn as sns
 sns.set(style='dark')
 
 # Load dataset
-df = pd.read_csv("all_data.csv")
+df = pd.read_csv("dashboard/main_data.csv")
 df["dteday"] = pd.to_datetime(df["dteday"])
 
 # Helper function untuk filter data berdasarkan tanggal
