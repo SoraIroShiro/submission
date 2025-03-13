@@ -1,97 +1,98 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Load dataset (pastikan file CSV telah dibersihkan)
+# Load dataset
 @st.cache_data
 def load_data():
-    return pd.read_csv("main_data.csv")  # Ganti dengan path file yang benar
+    df = pd.read_csv("dashboard/main_data.csv")
+    df['dteday'] = pd.to_datetime(df['dteday'])
+    return df
 
-day_df_clean = load_data()
+df = load_data()
 
-# Sidebar navigasi
-st.sidebar.title("🚴 Dashboard Penyewaan Sepeda")
-page = st.sidebar.radio("Pilih Analisis", [
-    "📊 Statistik Deskriptif",
-    "📉 Distribusi Penyewaan",
-    "📅 Perbandingan Hari Kerja vs Akhir Pekan",
-    "🌦️ Tren Penyewaan Sepeda per Musim",
-    "📈 Korelasi Cuaca & Penyewaan"
-])
+# Judul Dashboard
+st.title("📊 Dashboard Penyewaan Sepeda")
 
-# 1. Statistik Deskriptif
-if page == "📊 Statistik Deskriptif":
-    st.title("📊 Statistik Deskriptif")
-    st.write("**Ringkasan Statistik Jumlah Penyewaan Sepeda**")
-    st.write(day_df_clean['cnt'].describe())
+# Sidebar untuk Filter Data
+st.sidebar.header("🔍 Filter Data")
 
-# 2. Distribusi Penyewaan Sepeda
-elif page == "📉 Distribusi Penyewaan":
-    st.title("📉 Distribusi Penyewaan Sepeda")
-    
-    # Histogram
-    st.subheader("Histogram Penyewaan Sepeda")
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.histplot(day_df_clean['cnt'], bins=30, kde=True, color='blue', ax=ax)
-    plt.xlabel('Jumlah Penyewaan Sepeda')
-    plt.ylabel('Frekuensi')
+# Filter berdasarkan Tanggal
+start_date = df['dteday'].min()
+end_date = df['dteday'].max()
+selected_date = st.sidebar.date_input("📅 Pilih Rentang Tanggal", [start_date, end_date], min_value=start_date, max_value=end_date)
+
+# Checkbox untuk Hari Kerja vs Akhir Pekan
+show_workingday = st.sidebar.checkbox("🏢 Tampilkan Hari Kerja", value=True)
+show_weekend = st.sidebar.checkbox("🌞 Tampilkan Akhir Pekan", value=True)
+
+# Terapkan Filter
+df_filtered = df[(df['dteday'] >= pd.to_datetime(selected_date[0])) & 
+                 (df['dteday'] <= pd.to_datetime(selected_date[1]))]
+
+if show_workingday and not show_weekend:
+    df_filtered = df_filtered[df_filtered['workingday'] == 1]
+elif show_weekend and not show_workingday:
+    df_filtered = df_filtered[df_filtered['workingday'] == 0]
+elif not show_workingday and not show_weekend:
+    df_filtered = pd.DataFrame(columns=df.columns)  # Kosongkan data jika tidak ada checkbox yang dipilih
+
+# Jika tidak ada checkbox yang dipilih, tampilkan semua data
+total_users = df_filtered['cnt'].sum()
+st.metric("🚴 Total Pengguna Setelah Filter:", f"{total_users:,}".replace(",", "."))
+
+# Tampilkan data yang telah difilter
+st.write("### Data yang Ditampilkan Setelah Filter")
+st.dataframe(df_filtered.head())
+
+# Menentukan Pertanyaan Bisnis
+st.header("📌 Menentukan Pertanyaan Bisnis")
+
+st.subheader("1️⃣ Bagaimana pola distribusi penyewaan sepeda?")
+st.write("Untuk melihat insight ke depan dalam distribusi.")
+if not df_filtered.empty:
+    fig, ax = plt.subplots(figsize=(10, 5))
+    sns.histplot(df_filtered['cnt'], bins=30, kde=True, ax=ax)
+    ax.set_title("Distribusi Penyewaan Sepeda")
+    ax.set_xlabel("Jumlah Penyewaan")
+    ax.set_ylabel("Frekuensi")
     st.pyplot(fig)
-    
-    # Boxplot
-    st.subheader("Boxplot Penyewaan Sepeda")
-    fig, ax = plt.subplots(figsize=(6, 4))
-    sns.boxplot(y=day_df_clean['cnt'], color='lightblue', ax=ax)
-    plt.ylabel('Jumlah Penyewaan Sepeda')
-    st.pyplot(fig)
+else:
+    st.warning("Tidak ada data yang tersedia untuk ditampilkan.")
 
-# 3. Perbandingan Hari Kerja vs Akhir Pekan
-elif page == "📅 Perbandingan Hari Kerja vs Akhir Pekan":
-    st.title("📅 Perbandingan Hari Kerja vs Akhir Pekan")
+st.subheader("2️⃣ Bagaimana perbedaan antara menyewa sepeda di hari kerja dan akhir pekan?")
+st.write("Pertanyaan ini ditujukan untuk pemerataan kebutuhan suplai sepeda pada suatu persewaan.")
+if not df_filtered.empty:
+    filtered_data = df_filtered.copy()
+    if show_workingday and not show_weekend:
+        filtered_data = filtered_data[filtered_data['workingday'] == 1]
+    elif show_weekend and not show_workingday:
+        filtered_data = filtered_data[filtered_data['workingday'] == 0]
     
-    # Menambahkan kolom kategori hari kerja & akhir pekan
-    day_df_clean['is_weekend'] = day_df_clean['weekday'].apply(lambda x: 'Weekend' if x in ['Saturday', 'Sunday'] else 'Weekday')
-    
-    # Boxplot
-    st.subheader("Boxplot Jumlah Penyewaan Sepeda")
-    fig, ax = plt.subplots(figsize=(6, 4))
-    sns.boxplot(data=day_df_clean, x='is_weekend', y='cnt', palette='coolwarm', ax=ax)
-    plt.xlabel('Kategori Hari')
-    plt.ylabel('Jumlah Penyewaan Sepeda')
-    st.pyplot(fig)
+    if not filtered_data.empty:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        sns.barplot(x=filtered_data['workingday'].map({0: "Akhir Pekan", 1: "Hari Kerja"}), y=filtered_data['cnt'], estimator=sum, ax=ax)
+        ax.set_title("Perbedaan Penyewaan Sepeda: Hari Kerja vs Akhir Pekan")
+        ax.set_xlabel("Jenis Hari")
+        ax.set_ylabel("Jumlah Penyewaan")
+        st.pyplot(fig)
+    else:
+        st.warning("Tidak ada data yang tersedia untuk ditampilkan.")
+else:
+    st.warning("Tidak ada data yang tersedia untuk ditampilkan.")
 
-# 4. Tren Penyewaan Sepeda berdasarkan Musim
-elif page == "🌦️ Tren Penyewaan Sepeda per Musim":
-    st.title("🌦️ Tren Penyewaan Sepeda per Musim")
-    
-    # Mengelompokkan data berdasarkan tahun dan musim
-    seasonal_trend = day_df_clean.groupby(['yr', 'season'])['cnt'].mean().reset_index()
-    seasonal_trend['yr'] = seasonal_trend['yr'].map({0: 2011, 1: 2012})
-    
-    # Lineplot
-    st.subheader("Tren Penyewaan Sepeda per Musim dan Tahun")
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.lineplot(data=seasonal_trend, x='yr', y='cnt', hue='season', marker='o', palette='Set2', ax=ax)
-    plt.xlabel('Tahun')
-    plt.ylabel('Rata-rata Penyewaan Sepeda')
+st.subheader("3️⃣ Bagaimana tren penyewaan sepeda berdasarkan musim di setiap tahun?")
+st.write("Bertujuan untuk melihat minat pesepeda pada setiap musim.")
+if not df_filtered.empty:
+    df_filtered['year_month'] = df_filtered['dteday'].dt.strftime('%Y-%m')
+    season_trend = df_filtered.groupby(['year_month', 'season'])['cnt'].mean().unstack()
+    fig, ax = plt.subplots(figsize=(10, 5))
+    season_trend.plot(kind='line', marker='o', ax=ax)
+    ax.set_title("Tren Penyewaan Sepeda Berdasarkan Musim")
+    ax.set_xlabel("Bulan-Tahun")
+    ax.set_ylabel("Rata-rata Penyewaan Sepeda")
+    ax.legend(title="Musim", labels=["Spring", "Summer", "Fall", "Winter"])
     st.pyplot(fig)
-
-# 5. Korelasi Cuaca & Penyewaan
-elif page == "📈 Korelasi Cuaca & Penyewaan":
-    st.title("📈 Korelasi Cuaca & Penyewaan Sepeda")
-    
-    # Heatmap Korelasi
-    st.subheader("Heatmap Korelasi")
-    correlation_matrix = day_df_clean[['cnt', 'temp', 'atemp', 'hum', 'windspeed']].corr()
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f', ax=ax)
-    st.pyplot(fig)
-    
-    # Scatter plot suhu vs jumlah penyewaan
-    st.subheader("Scatter Plot Suhu vs Penyewaan Sepeda")
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.scatterplot(data=day_df_clean, x='temp', y='cnt', hue='season', palette='viridis', alpha=0.7, ax=ax)
-    plt.xlabel('Suhu Normalisasi')
-    plt.ylabel('Jumlah Penyewaan Sepeda')
-    st.pyplot(fig)
+else:
+    st.warning("Tidak ada data yang tersedia untuk ditampilkan.")
